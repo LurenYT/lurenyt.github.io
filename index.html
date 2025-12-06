@@ -98,6 +98,9 @@
         let syncEnabled = false;
         let showShareModal = false;
         let isInitialLoad = true;
+        let notificationsEnabled = false;
+        let telegramChatId = null;
+        let showNotificationModal = false;
 
         function initUser() {
             let user = localStorage.getItem('planner-user');
@@ -116,6 +119,13 @@
                 user = JSON.parse(user);
             }
             currentUser = user;
+            
+            // Загружаем настройки уведомлений
+            const savedChatId = localStorage.getItem('telegram-chat-id');
+            if (savedChatId) {
+                telegramChatId = savedChatId;
+                notificationsEnabled = true;
+            }
         }
 
         function getUserColor(userId) {
@@ -265,6 +275,11 @@
             sortTasks();
             saveTasks();
             
+            // Отправляем уведомление
+            const timeStr = task.time ? ` в ${formatTime(task.time)}` : '';
+            const dateStr = selectedDate === new Date().toISOString().split('T')[0] ? 'сегодня' : selectedDate;
+            sendTelegramNotification(`📋 <b>Новая задача</b>\n\n${task.text}${timeStr}\n\n📅 ${dateStr}\n👤 ${currentUser.name}`);
+            
             input.value = '';
             timeInput.value = '';
             preservedInput = { text: '', time: '' };
@@ -286,6 +301,12 @@
             if (task) {
                 task.completed = !task.completed;
                 task.completedBy = task.completed ? currentUser.id : null;
+                
+                // Уведомление о выполнении
+                if (task.completed) {
+                    sendTelegramNotification(`✅ <b>Задача выполнена</b>\n\n${task.text}\n\n👤 ${currentUser.name}`);
+                }
+                
                 saveTasks();
                 render();
                 setTimeout(restoreInputState, 50);
@@ -383,6 +404,57 @@
             }
         }
 
+        function toggleNotificationModal() {
+            showNotificationModal = !showNotificationModal;
+            render();
+        }
+
+        function setupTelegramNotifications() {
+            const chatId = prompt('Введите ваш Telegram Chat ID:\n\n1. Откройте @userinfobot в Telegram\n2. Нажмите Start\n3. Скопируйте ваш ID');
+            
+            if (chatId && chatId.trim()) {
+                telegramChatId = chatId.trim();
+                notificationsEnabled = true;
+                localStorage.setItem('telegram-chat-id', telegramChatId);
+                showNotificationModal = false;
+                render();
+                alert('✅ Уведомления настроены! Вы будете получать сообщения о новых задачах.');
+            }
+        }
+
+        function disableNotifications() {
+            if (confirm('Отключить уведомления?')) {
+                notificationsEnabled = false;
+                telegramChatId = null;
+                localStorage.removeItem('telegram-chat-id');
+                showNotificationModal = false;
+                render();
+            }
+        }
+
+        async function sendTelegramNotification(message) {
+            if (!notificationsEnabled || !telegramChatId) return;
+            
+            // Используем публичный Telegram Bot API
+            const BOT_TOKEN = '7997044162:AAF8w_hC5MXkUMIEU-GhFWe40Ln4YS93DU0'; // Замените на ваш токен
+            
+            try {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chat_id: telegramChatId,
+                        text: message,
+                        parse_mode: 'HTML'
+                    })
+                });
+            } catch (error) {
+                console.log('Не удалось отправить уведомление');
+            }
+        }
+
         function render() {
             const app = document.getElementById('app');
             
@@ -413,6 +485,13 @@
                                     📋 Мой день
                                 </h1>
                                 <div class="flex items-center gap-3">
+                                    <button 
+                                        onclick="toggleNotificationModal()"
+                                        class="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2"
+                                        title="Настроить уведомления"
+                                    >
+                                        ${notificationsEnabled ? '🔔' : '🔕'}
+                                    </button>
                                     <button 
                                         onclick="toggleShareModal()"
                                         class="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2"
